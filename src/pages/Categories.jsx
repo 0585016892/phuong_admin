@@ -1,17 +1,43 @@
 import React, { useEffect, useState } from "react";
 import {
-  Table, Button, Space, Modal, Form, Input, Tag, message, Row,Col,
-  Popconfirm, Card, Typography, Select, Tooltip, Avatar, Badge
+  Table,
+  Button,
+  Space,
+  Modal,
+  Form,
+  Input,
+  Tag,
+  message,
+  Row,
+  Col,
+  Popconfirm,
+  Card,
+  Typography,
+  Select,
+  Tooltip,
+  Avatar,
+  Badge,
 } from "antd";
+
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined,
-  SearchOutlined, FolderOpenOutlined, LinkOutlined,
-  CheckCircleOutlined, EyeInvisibleOutlined,
-  AppstoreOutlined, ArrowRightOutlined
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  SearchOutlined,
+  AppstoreOutlined,
+  LinkOutlined,
+  FolderOpenOutlined,
 } from "@ant-design/icons";
-import { getCategories, createCategory, updateCategory, deleteCategory } from "../api/categoryApi";
+
+import {
+  getCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+} from "../api/categoryApi";
 
 const { Title, Text } = Typography;
+const { Option } = Select;
 
 export default function Categories() {
   const [data, setData] = useState([]);
@@ -19,14 +45,60 @@ export default function Categories() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [keyword, setKeyword] = useState("");
+
   const [form] = Form.useForm();
 
+  // ======================================================
+  // CHUYỂN ĐỔI LIST PHẲNG THÀNH CẤU TRÚC CÂY (TREE DATA)
+  // ======================================================
+  const listToTree = (list) => {
+    const map = {};
+    const roots = [];
+
+    // Tạo bản đồ id -> index
+    list.forEach((item, index) => {
+      map[item.id] = { ...item, key: item.id }; // Đảm bảo luôn có key
+    });
+
+    list.forEach((item) => {
+      const mappedItem = map[item.id];
+      if (item.parent_id !== 0 && map[item.parent_id]) {
+        // Nếu có cha, đẩy vào mảng children của cha
+        if (!map[item.parent_id].children) {
+          map[item.parent_id].children = [];
+        }
+        map[item.parent_id].children.push(mappedItem);
+      } else {
+        // Nếu không có cha (hoặc cha không tồn tại), coi như gốc
+        roots.push(mappedItem);
+      }
+    });
+
+    return roots;
+  };
+
+  // Tách riêng mảng phẳng để dùng cho ô Select chọn danh mục cha
+  const flatCategories = data;
+  // Dữ liệu dạng cây dùng cho Table
+  const treeData = listToTree(data);
+
+  // Lọc danh sách làm danh mục cha (Bỏ chính nó và các con nếu đang edit để tránh vòng lặp vô tận)
+  const availableParents = flatCategories.filter((item) => {
+    if (editing && item.id === editing.id) return false;
+    // (Tùy chọn nâng cao): Có thể lọc thêm các con của 'editing' nếu cần thiết
+    return true;
+  });
+
+  // ======================================================
+  // FETCH DATA
+  // ======================================================
   const fetchCategories = async () => {
     try {
       setLoading(true);
       const res = await getCategories({ keyword });
-      setData(res.data.data || res.data || []);
-    } catch (err) {
+      setData(res.data.data || []);
+    } catch (error) {
+      console.log(error);
       message.error("Không tải được danh mục");
     } finally {
       setLoading(false);
@@ -37,15 +109,26 @@ export default function Categories() {
     fetchCategories();
   }, [keyword]);
 
+  // ======================================================
+  // ACTIONS
+  // ======================================================
   const openAdd = () => {
     setEditing(null);
     form.resetFields();
+    form.setFieldsValue({
+      status: 1,
+      parent_id: 0,
+    });
     setOpen(true);
   };
 
   const openEdit = (record) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    form.setFieldsValue({
+      name: record.name,
+      status: record.status,
+      parent_id: record.parent_id,
+    });
     setOpen(true);
   };
 
@@ -57,98 +140,126 @@ export default function Categories() {
         message.success("Cập nhật danh mục thành công");
       } else {
         await createCategory(values);
-        message.success("Thêm danh mục mới thành công");
+        message.success("Thêm danh mục thành công");
       }
       setOpen(false);
       fetchCategories();
-    } catch (err) {
-      message.error("Thao tác thất bại");
+    } catch (error) {
+      console.log(error);
+      message.error(error?.response?.data?.message || "Thao tác thất bại");
     }
   };
 
+  const handleDelete = async (id) => {
+    try {
+      await deleteCategory(id);
+      message.success("Xóa danh mục thành công");
+      fetchCategories();
+    } catch (error) {
+      console.log(error);
+      message.error(error?.response?.data?.message || "Xóa thất bại");
+    }
+  };
+
+  // ======================================================
+  // COLUMNS DEFINITION
+  // ======================================================
   const columns = [
     {
       title: "DANH MỤC",
-      key: "category_info",
+      key: "category",
       render: (_, r) => (
-        <Space size="middle" style={{ padding: '8px 0' }}>
-          <div style={{ position: 'relative' }}>
-            <Avatar 
-              shape="circle" 
-              size={48} 
-              icon={<AppstoreOutlined />} 
-              style={{ 
-                  backgroundColor: r.status === 1 ? '#f5f3ff' : '#f8fafc', 
-                  color: r.status === 1 ? '#8b5cf6' : '#cbd5e1',
-                  border: `1px solid ${r.status === 1 ? '#ddd6fe' : '#e2e8f0'}`
-              }} 
-            />
-          </div>
+        <Space size={14}>
+          <Avatar
+            size={40}
+            icon={<AppstoreOutlined />}
+            style={{
+              background: r.status === 1 ? "#eef2ff" : "#f1f5f9",
+              color: r.status === 1 ? "#6366f1" : "#94a3b8",
+            }}
+          />
           <div>
-            <Text strong style={{ fontSize: '15px', color: '#1e293b', display: 'block' }}>
-                {r.name}
+            <Text strong style={{ display: "block", fontSize: 14 }}>
+              {r.name}
             </Text>
-            <Space size={4} style={{ marginTop: 2 }}>
-                <Tag color="blue" style={{ fontSize: '10px', margin: 0, borderRadius: 4, border: 'none', background: '#eff6ff', color: '#3b82f6' }}>
-                    #{r.id}
-                </Tag>
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                    <LinkOutlined style={{ marginRight: 4 }} />
-                    {r.slug}
-                </Text>
+            <Space size={6}>
+              <Tag
+                color="blue"
+                style={{ borderRadius: 6, margin: 0, fontSize: 11 }}
+              >
+                #{r.id}
+              </Tag>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                <LinkOutlined /> {r.slug}
+              </Text>
             </Space>
           </div>
         </Space>
       ),
     },
     {
+      title: "CẤP ĐỘ",
+      key: "level",
+      width: 150,
+      render: (_, r) => {
+        const isRoot = r.parent_id === 0;
+        return (
+          <Tag color={isRoot ? "purple" : "orange"} style={{ borderRadius: 6 }}>
+            {isRoot ? "Danh mục gốc" : "Danh mục con"}
+          </Tag>
+        );
+      },
+    },
+    {
       title: "TRẠNG THÁI",
       dataIndex: "status",
-      align: 'center',
+      align: "center",
       width: 150,
       render: (v) => (
-        <Badge 
-            status={v === 1 ? "success" : "default"} 
-            text={
-                <Text style={{ 
-                    color: v === 1 ? '#10b981' : '#94a3b8', 
-                    fontWeight: 500,
-                    fontSize: '13px' 
-                }}>
-                    {v === 1 ? "Đang bán" : "Lưu kho"}
-                </Text>
-            } 
+        <Badge
+          status={v === 1 ? "success" : "default"}
+          text={
+            <Text
+              style={{
+                color: v === 1 ? "#10b981" : "#94a3b8",
+                fontWeight: 500,
+              }}
+            >
+              {v === 1 ? "Đang hiển thị" : "Đã ẩn"}
+            </Text>
+          }
         />
       ),
     },
     {
       title: "THAO TÁC",
-      align: 'right',
-      width: 120,
+      align: "right",
+      width: 140,
       render: (_, r) => (
         <Space>
           <Tooltip title="Chỉnh sửa">
-            <Button 
-                type="text" 
-                icon={<EditOutlined style={{color: '#6366f1'}} />} 
-                onClick={() => openEdit(r)}
-                style={{ background: '#f5f3ff', borderRadius: '8px' }}
+            <Button
+              type="text"
+              icon={<EditOutlined style={{ color: "#6366f1" }} />}
+              style={{ background: "#eef2ff", borderRadius: 8 }}
+              onClick={() => openEdit(r)}
             />
           </Tooltip>
+
           <Popconfirm
-                title="Xóa danh mục?"
-                description="Hành động này không thể hoàn tác."
-                onConfirm={() => deleteCategory(r.id).then(fetchCategories)}
-                okText="Xóa"
-                cancelText="Hủy"
-                okButtonProps={{ danger: true }}
-                >
-                <Button 
-                    type="text" 
-                    danger 
-                    icon={<DeleteOutlined />} 
-                    style={{ background: '#fff1f2', borderRadius: '8px' }}
-                />
+            title="Xóa danh mục?"
+            description="Lưu ý: Xóa danh mục cha sẽ ảnh hưởng đến hiển thị các con!"
+            onConfirm={() => handleDelete(r.id)}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              danger
+              type="text"
+              icon={<DeleteOutlined />}
+              style={{ background: "#fff1f2", borderRadius: 8 }}
+            />
           </Popconfirm>
         </Space>
       ),
@@ -156,138 +267,168 @@ export default function Categories() {
   ];
 
   return (
-    <div style={{ padding: '24px', background: '#fcfcfd', minHeight: '100vh' }}>
-      {/* TOP HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+    <div style={{ padding: 24, background: "#f8fafc", minHeight: "100vh" }}>
+      {/* HEADER */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 24,
+        }}
+      >
         <div>
-          <Title level={3} style={{ margin: 0, color: '#0f172a' }}>Thể loại & Phân loại</Title>
-          <Text style={{ color: '#64748b' }}>Tổ chức kho sách của bạn theo các chủ đề khoa học.</Text>
+          <Title level={3} style={{ margin: 0 }}>
+            Quản lý danh mục
+          </Title>
+          <Text type="secondary">Xem danh mục theo cấu trúc sơ đồ cây</Text>
         </div>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
           size="large"
-          style={{ 
-            borderRadius: 8, 
-            height: 42, 
-            background: '#6366f1',
-            padding: '0 24px',
-            fontWeight: 500,
-            boxShadow: '0 4px 10px rgba(99, 102, 241, 0.2)' 
-          }}
           onClick={openAdd}
+          style={{
+            background: "#6366f1",
+            borderRadius: 10,
+            height: 42,
+            paddingInline: 24,
+            fontWeight: 600,
+          }}
         >
           Thêm danh mục
         </Button>
       </div>
 
-      {/* SEARCH & STATS */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col span={24}>
-            <Card bordered={false} bodyStyle={{ padding: '16px 24px' }} style={{ borderRadius: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Input
-                        placeholder="Tìm danh mục..."
-                        allowClear
-                        prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-                        style={{ width: 350, borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0' }}
-                        onChange={(e) => setKeyword(e.target.value)}
-                    />
-                    <Space size="large">
-                        <div style={{ textAlign: 'right' }}>
-                            <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>TỔNG CỘNG</Text>
-                            <Text strong style={{ fontSize: '18px' }}>{data.length}</Text>
-                        </div>
-                    </Space>
-                </div>
-            </Card>
-          </Col>
-      </Row>
+      {/* SEARCH CARD */}
+      <Card bordered={false} style={{ borderRadius: 16, marginBottom: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Input
+            allowClear
+            placeholder="Tìm nhanh danh mục..."
+            prefix={<SearchOutlined />}
+            style={{ width: 350, borderRadius: 10 }}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+          <div style={{ textAlign: "right" }}>
+            <Text type="secondary">Tổng số lượng</Text>
+            <Title level={4} style={{ margin: 0 }}>
+              {data.length}
+            </Title>
+          </div>
+        </div>
+      </Card>
 
-      {/* DATA TABLE */}
-      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+      {/* TREE TABLE CARD */}
+      <Card bordered={false} style={{ borderRadius: 18 }}>
         <Table
           rowKey="id"
-          columns={columns}
-          dataSource={data}
           loading={loading}
-          pagination={{ 
-              pageSize: 7,
-              showTotal: (total) => <Text type="secondary">Đang hiển thị {total} danh mục</Text>,
-              position: ['bottomCenter']
+          columns={columns}
+          dataSource={treeData} // Sử dụng dữ liệu cây đã convert
+          expandable={{
+            defaultExpandAllRows: true, // Tự động bung hết các nhánh cây khi load dữ liệu
+            indentSize: 24, // Khoảng cách thụt lề cho danh mục con (tính bằng px)
           }}
-          className="custom-table"
+          pagination={false} // Cấu trúc cây nên tắt phân trang hoặc phân trang cẩn thận
         />
-      </div>
+      </Card>
 
-      {/* ACTION MODAL */}
+      {/* MODAL ADD/EDIT */}
       <Modal
         open={open}
+        centered
+        width={500}
         title={null}
         onCancel={() => setOpen(false)}
         onOk={handleSubmit}
-        okText={editing ? "Cập nhật ngay" : "Tạo danh mục"}
-        cancelText="Hủy bỏ"
-        width={500}
-        centered
-        okButtonProps={{ style: { background: '#6366f1', borderRadius: 8, height: 40, width: 140 } }}
-        cancelButtonProps={{ style: { borderRadius: 8, height: 40 } }}
-        bodyStyle={{ padding: '30px' }}
+        okText={editing ? "Cập nhật" : "Tạo danh mục"}
+        cancelText="Hủy"
+        okButtonProps={{
+          style: {
+            background: "#6366f1",
+            borderRadius: 8,
+            height: 40,
+            minWidth: 120,
+          },
+        }}
       >
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ width: 60, height: 60, background: '#f5f3ff', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                <FolderOpenOutlined style={{ fontSize: 24, color: '#8b5cf6' }} />
-            </div>
-            <Title level={4} style={{ margin: 0 }}>{editing ? "Sửa danh mục" : "Danh mục mới"}</Title>
-            <Text type="secondary">Thông tin này sẽ hiển thị trực tiếp trên Website</Text>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              margin: "0 auto 12px",
+              borderRadius: 16,
+              background: "#eef2ff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <FolderOpenOutlined style={{ fontSize: 24, color: "#6366f1" }} />
+          </div>
+          <Title level={4}>
+            {editing ? "Chỉnh sửa danh mục" : "Thêm danh mục"}
+          </Title>
         </div>
 
         <Form form={form} layout="vertical">
           <Form.Item
+            label="Tên danh mục"
             name="name"
-            label={<Text strong style={{ color: '#475569' }}>Tên hiển thị</Text>}
-            rules={[{ required: true, message: "Tên danh mục không được để trống" }]}
+            rules={[{ required: true, message: "Vui lòng nhập tên danh mục" }]}
           >
-            <Input placeholder="Nhập tên danh mục (Sách Kỹ Năng...)" size="large" style={{ borderRadius: 8 }} />
+            <Input
+              size="large"
+              placeholder="Nhập tên danh mục..."
+              style={{ borderRadius: 10 }}
+            />
           </Form.Item>
 
-          <Form.Item
-            name="status"
-            label={<Text strong style={{ color: '#475569' }}>Cấu hình trạng thái</Text>}
-            initialValue={1}
-          >
-            <Select size="large" style={{ width: '100%' }}>
-              <Select.Option value={1}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Badge status="success" />
-                    <Text>Cho phép hiển thị công khai</Text>
-                </div>
-              </Select.Option>
-              <Select.Option value={0}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Badge status="default" />
-                    <Text>Chế độ lưu trữ (Ẩn)</Text>
-                </div>
-              </Select.Option>
+          <Form.Item label="Danh mục cha" name="parent_id">
+            <Select size="large" style={{ width: "100%" }}>
+              <Option value={0}>Danh mục gốc (Không có cha)</Option>
+              {availableParents.map((item) => (
+                <Option key={item.id} value={item.id}>
+                  {item.name}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item label="Trạng thái" name="status">
+            <Select size="large" style={{ width: "100%" }}>
+              <Option value={1}>Hiển thị</Option>
+              <Option value={0}>Ẩn</Option>
             </Select>
           </Form.Item>
         </Form>
       </Modal>
 
+      {/* CUSTOM CSS ĐỂ THẨM MỸ HƠN */}
       <style>{`
-        .custom-table .ant-table-thead > tr > th {
-            background: #f8fafc !important;
-            color: #64748b !important;
-            font-size: 11px !important;
-            font-weight: 700 !important;
-            letter-spacing: 0.05em !important;
-            border-bottom: 1px solid #f1f5f9 !important;
+        .ant-table-thead > tr > th {
+          background: #f8fafc !important;
+          font-size: 12px !important;
+          color: #64748b !important;
+          font-weight: 700 !important;
+          border-bottom: 1px solid #e2e8f0 !important;
         }
-        .custom-table .ant-table-tbody > tr:hover > td {
-            background: #fcfcfd !important;
+        .ant-table-tbody > tr:hover > td {
+          background: #f1f5f9 !important;
         }
-        .ant-table-pagination.ant-pagination {
-            margin: 24px 0 !important;
+        /* Style cho icon đóng mở rộng cây */
+        .ant-table-row-expand-icon {
+          border-radius: 4px !important;
+          border: 1px solid #cbd5e1 !important;
+          color: #64748b !important;
         }
       `}</style>
     </div>
