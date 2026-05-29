@@ -45,7 +45,9 @@ export default function Categories() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [keyword, setKeyword] = useState("");
-
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [total, setTotal] = useState(0);
   const [form] = Form.useForm();
 
   // ======================================================
@@ -95,8 +97,17 @@ export default function Categories() {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const res = await getCategories({ keyword });
+
+      const res = await getCategories({
+        keyword,
+        page,
+        limit,
+      });
+
+      console.log(res);
+
       setData(res.data.data || []);
+      setTotal(res.data.total || 0);
     } catch (error) {
       console.log(error);
       message.error("Không tải được danh mục");
@@ -107,7 +118,7 @@ export default function Categories() {
 
   useEffect(() => {
     fetchCategories();
-  }, [keyword]);
+  }, [keyword, page, limit]);
 
   // ======================================================
   // ACTIONS
@@ -314,7 +325,10 @@ export default function Categories() {
             placeholder="Tìm nhanh danh mục..."
             prefix={<SearchOutlined />}
             style={{ width: 350, borderRadius: 10 }}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={(e) => {
+              setKeyword(e.target.value);
+              setPage(1);
+            }}
           />
           <div style={{ textAlign: "right" }}>
             <Text type="secondary">Tổng số lượng</Text>
@@ -336,7 +350,18 @@ export default function Categories() {
             defaultExpandAllRows: true, // Tự động bung hết các nhánh cây khi load dữ liệu
             indentSize: 24, // Khoảng cách thụt lề cho danh mục con (tính bằng px)
           }}
-          pagination={false} // Cấu trúc cây nên tắt phân trang hoặc phân trang cẩn thận
+          pagination={{
+            current: page,
+            pageSize: limit,
+            total: total,
+            showSizeChanger: true,
+            pageSizeOptions: ["5", "10", "20", "50"],
+            showTotal: (total) => `Tổng ${total} danh mục`,
+            onChange: (newPage, newSize) => {
+              setPage(newPage);
+              setLimit(newSize);
+            },
+          }}
         />
       </Card>
 
